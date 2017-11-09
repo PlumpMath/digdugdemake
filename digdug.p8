@@ -82,7 +82,7 @@ function _update()
       find_new_player_x()
     end
   end
-  if btn(5) then
+  if btnp(5) then
     stop_firing()
     detach_all_enemies()
   end
@@ -108,7 +108,7 @@ function _update()
       enemies[enemy_idx].pumps+=1
     end
   else
-    if btn(4) then
+    if btnp(4) then
       fire()
     end
   end
@@ -281,6 +281,10 @@ function update_enemy(enemy)
       enemy.sprite = 40+(enemy.pumps*2) - 2
       enemy.w=2
       enemy.h=2
+      if enemy.pumps==3 then
+        del(enemies, enemy)
+        stop_firing()
+      end
     end  
   else
     enemy.pumps=0
@@ -290,7 +294,6 @@ function update_enemy(enemy)
       enemy.speed = -enemy.speed
     end
     if enemy.speed > 0 then enemy.flipx=true else enemy.flipx=false end
-
   end
 end
 
