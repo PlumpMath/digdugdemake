@@ -24,6 +24,7 @@ player.rope_speed=3
 player.firing=false
 player.firing_t=0
 enemies = {}
+t=0
 
 function advance_obj_frame(obj)
   -- obj must have 
@@ -70,6 +71,7 @@ function _init()
 end
 
 function _update()
+  t+=1
   if btn(0) or btn(1) or
      btn(2) or btn(3) then
      advance_obj_frame(player)
@@ -163,19 +165,6 @@ function _draw()
   pretty_draw_sprite(player)
   for enemy in all(enemies) do
     pretty_draw_sprite(enemy)
-    -- center sprite?
-    pset(enemy.x+4,enemy.y+4,7)
-    -- above checker
-    pset(enemy.x+4, enemy.y-4, 7)
-    -- below checker
-    pset(enemy.x+4,enemy.y+10, 7)
-
-    for node in all(enemy.closed_nodes) do
-      rect(node.x*8, node.y*8, node.x*8+8, node.y*8+8, 7)
-    end
-    for node in all(enemy.winning_path) do
-      rect(node.x*8, node.y*8, node.x*8+8, node.y*8+8, 11)
-    end
   end
 end
 
@@ -310,6 +299,7 @@ function create_enemies()
     -- frame
     enemy.step=10
     enemy.t=0
+    enemy.tt=flr(rnd(30))
     enemy.sprites={8, 9, 10, 11}
     enemy.frame=1
     enemy.flipx=false
@@ -322,6 +312,7 @@ function create_enemies()
     enemy.attached=false
     enemy.pumps=0
     enemy.speed={x=0.5,y=0}
+    enemy.default_speed=0.5
     enemy.pump_timer=30*1 -- minus 1 every frame = 1 sec
     enemy.ttl=45 -- 1.5sec to live after killed
     enemy.dying=false
@@ -338,6 +329,7 @@ function create_enemies()
     enemy.winning_path = {}
     enemy.g_score[enemy.start_node] = find_distance(enemy.start_node, enemy.goal)
     enemy.f_score[enemy.start_node] = enemy.g_score[enemy.start_node]
+    enemy.movement_queue = {}
     add(enemies, enemy)
     --create terrain gaps
     mset(enemy.x/8, enemy.y/8, 0)
@@ -354,7 +346,7 @@ function update_enemy(enemy)
       del(enemies, enemy)
     end
   else
-    enemy.t+=1
+    enemy.tt+=1
     advance_obj_frame(enemy)
     enemy.sprite=enemy.sprites[enemy.frame+1]
     if enemy.attached then
@@ -387,28 +379,44 @@ function update_enemy(enemy)
       if check_enemy_collision_wall(enemy) or
         enemy.x > 120 or enemy.x < 0 then
         enemy.speed.x = -enemy.speed.x
-        --enemy.speed=find_new_enemy_speed(enemy)
-
       end
       if enemy.speed.x > 0 then enemy.flipx=true else enemy.flipx=false end
-      -- check if enemy should turn
-      printh(find_distance(enemy, player))
-      --if enemy.speed.y=0 and not check_enemy_collision_wall({x=enemy.x, y=enemy.y-8, speed=enemy.speed}) then
-        --enemy.speed
-      --end
-      --if enemy.speed.y==0 and enemy.x%8==0 and not check_enemy_collision_wall({x=enemy.x, y=enemy.y-8, speed=enemy.speed}) then
-      --  local current_distance = find_distance(enemy, player)
-      --  local distance_above = find_distance({x=enemy.x, y=enemy.y-8}, player)
-      --  if distance_above < current_distance then
-      --    enemy.speed.x=0
-      --    enemy.speed.y=-0.5
-      --  end
-      --end
+
+      -- FOLLOW PATH
+      if #enemy.movement_queue>0 then
+        if enemy.movement_queue[1].x > (enemy.x/8) then
+          enemy.speed.x = enemy.default_speed
+        elseif enemy.movement_queue[1].x < (enemy.x/8) then
+          enemy.speed.x = -enemy.default_speed
+        else
+          enemy.speed.x=0
+        end
+
+        if enemy.movement_queue[1].y > (enemy.y/8) then
+          enemy.speed.y = enemy.default_speed
+        elseif enemy.movement_queue[1].y < (enemy.y/8) then
+          enemy.speed.y = -enemy.default_speed
+        else
+          enemy.speed.y=0
+        end
+        if enemy.speed.x == 0 and enemy.speed.y == 0  or 
+           (enemy.x/8 ==0 and enemy.y/8 == 0) then
+          del(enemy.movement_queue, enemy.movement_queue[1])
+        end
+      end
+
     end
   end
 
-  if enemy.t%60*12==0 then
+  if enemy.tt%15==0 then
+    enemy.movement_queue = {}
     enemy.winning_path=astar(enemy)
+    if enemy.winning_path != nil then
+      for i=#enemy.winning_path,1,-1 do
+        add(enemy.movement_queue, enemy.winning_path[i])
+      end
+      del(enemy.movement_queue, enemy.movement_queue[1])
+    end
   end
 end
 
@@ -482,7 +490,6 @@ function astar(obj)
     obj.closed_nodes = {}
     obj.came_from = {}
     obj.start_node = {x=flr(obj.x/8), y=flr(obj.y/8)}
-    --printh("startnodex "..obj.start_node.x.." startnody"..obj.start_node.y)
     obj.openset = {obj.start_node}
     obj.goal = {x=flr(player.x/8), y=flr(player.y/8)}
     obj.current_node = obj.start_node
@@ -492,14 +499,10 @@ function astar(obj)
     obj.g_score[obj.start_node] = find_distance(obj.start_node, obj.goal)
     obj.f_score[obj.start_node] = obj.g_score[obj.start_node]
     while #obj.openset > 0 do
-      --printh("#obj.openset"..#obj.openset)
       local current_node = lowest_f_score(obj.openset, obj.f_score)
-      --printh("currentnodex "..current_node.x.." currentnody "..current_node.y)
-      --printh("LOWEST_F_SCORE:"..lowest_f_score(openset, f_score))
+
       current_node = lowest_f_score(obj.openset, obj.f_score)
       if current_node.x == obj.goal.x and current_node.y == obj.goal.y then
-        --printh("----------")
-        --printh("FOUND IT!")
         obj.winning_path = unwind_path(obj.winning_path, obj.came_from, current_node)
         return obj.winning_path
       end
@@ -512,14 +515,11 @@ function astar(obj)
       for neighbor in all(neighbors) do
         if not_in(obj.closed_nodes, neighbor) then
           local tentative_g_score = obj.g_score[current_node] + find_distance(current_node, neighbor)
-          --if not_in(openset, neighbor) or tentative_g_score < g_score[neighbor] then
           if not_in(obj.openset, neighbor) then
             -- found a good node?
-            --printh("FOUND A GOOD NODE")
             obj.came_from[neighbor] = current_node
             obj.g_score[neighbor] = tentative_g_score
             obj.f_score[neighbor] = obj.g_score[neighbor] + find_distance(neighbor, obj.goal)
-            --printh("GOOD NODEX:"..neighbor.x.." GOOD NODEY:"..neighbor.y.." TENTATIVE_G_SCORE:"..tentative_g_score)
 
             if not_in(obj.openset, neighbor) then
               add(obj.openset, neighbor)
@@ -547,12 +547,11 @@ function get_valid_neighbors(node)
   for x=-1,1 do
     for y=-1,1 do
       local new_node = {x=node.x+x, y=node.y+y}
-      --printh("newnodex:"..new_node.x.." newnodey:"..new_node.y)
       if not (x==0 and y==0) and not (y==-1 and x==-1) and not(x==1 and y==1)
-         and not_in(closed_nodes, new_node) and is_valid_node(new_node) then
-         --printh("ADDED NEIGHBOR NODE")
+         and not_in(closed_nodes, new_node) and is_valid_node(new_node) and
+         (new_node.x*8 > 0 and new_node.x*8 < 128 and 
+          new_node.y*8 > 0 and new_node.y*8 < 128) then
         add(nodes, new_node)
-        --add(checked_nodes, new_node)
       end
     end
   end
@@ -578,7 +577,6 @@ function is_valid_node(node)
 end
 
 function unwind_path ( flat_path, nodemap, current_node )
-
 	if nodemap [ current_node ] then
 		add ( flat_path, nodemap [ current_node ] ) 
 		return unwind_path ( flat_path, nodemap, nodemap [ current_node ] )
