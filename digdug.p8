@@ -24,6 +24,7 @@ player.rope_speed=3
 player.firing=false
 player.firing_t=0
 enemies = {}
+rocks = {}
 t=0
 
 function advance_obj_frame(obj)
@@ -48,6 +49,8 @@ function _init()
   player = {}
   player.x=128/8
   player.y=128/8
+  player.dx = 0
+  player.dy = 0
   player.w=1
   player.h=1
   player.sprite = 1
@@ -67,7 +70,9 @@ function _init()
   player.firing=false
   player.firing_t=0
   enemies = {}
+  rocks = {}
   create_enemies()
+  create_rocks()
 end
 
 function _update()
@@ -81,43 +86,55 @@ function _update()
   if not player.firing then
     if btn(0) then
       -- use regular sprite set
-      player.x-=player.speed
+      player.dx=-player.speed
       player.flipy=false
       player.flipx=false
       player.flipsprite=false
+      find_new_player_y()
       player.digx=(player.x+2)/8
       player.digy=(player.y)/8
-      find_new_player_y()
     elseif btn(1) then
-      player.x+=player.speed
+      player.dx=player.speed
       player.flipx=true
       player.flipy=false
       player.flipsprite=false
+      find_new_player_y()
       player.digx=(player.x+6)/8
       player.digy=(player.y)/8
-      find_new_player_y()
     elseif btn(2) then
       -- use different sprite set
-      player.y-=player.speed
+      player.dy=-player.speed
       player.flipx=false
       player.flipy=true
       player.flipsprite=true
+      find_new_player_x()
       player.digx=(player.x)/8
       player.digy=(player.y+2)/8
-      find_new_player_x()
     elseif btn(3) then
-      player.y+=player.speed
+      player.dy=player.speed
       player.flipx=false
       player.flipy=false
       player.flipsprite=true
+      find_new_player_x()
       player.digx=(player.x)/8
       player.digy=(player.y+6)/8
-      find_new_player_x()
+    else
+      player.dy=0
+      player.dx=0
     end
   end
+  player.x+=player.dx
+  player.y+=player.dy
+  if player.x<0 then player.x=0 player.dx=0 end
+  if player.x>120 then player.x=120 player.dx=0 end
+  if player.y<0 then player.y=0 player.dy=0 end
+  if player.y>120 then player.y=120 player.dy=0 end
+
   if btnp(5) then
     stop_firing()
     detach_all_enemies()
+    player.dx=0
+    player.dy=0
   end
   if player.flipsprite then
     player.sprite=player.flipsprites[player.frame+1]
@@ -129,6 +146,8 @@ function _update()
   mset(player.digx, player.digy, 0)
 
   if player.firing then
+    player.dx=0
+    player.dy=0
     firing_step()
     if check_hook_collision_wall() then
       stop_firing()
@@ -165,6 +184,11 @@ function _draw()
   pretty_draw_sprite(player)
   for enemy in all(enemies) do
     pretty_draw_sprite(enemy)
+    rect(enemy.goal.x*8, enemy.goal.y*8, enemy.goal.x*8+8, enemy.goal.y*8+8, 7)
+  end
+
+  for rock in all(rocks) do
+    pretty_draw_sprite(rock)
   end
 end
 
@@ -288,6 +312,26 @@ function check_hook_collision_enemy()
   return false
 end
 
+function create_rocks()
+  for i=1,3 do
+    rock = {}
+    rock.x = flr(rnd(128)/8)*8
+    rock.y = flr(rnd(128)/8)*8
+    while not fget(mget(flr((rock.x/8)), flr((rock.y+8)/8)), 0) do
+      rock.x = flr(rnd(128)/8)*8
+      rock.y = flr(rnd(128)/8)*8
+    end
+    rock.w=1
+    rock.h=1
+    rock.sprite=50
+    rock.sprites={50}
+    rock.frame=1
+    rock.t=0
+    rock.default_speed=2
+    add(rocks, rock)
+  end
+end
+
 function create_enemies()
   --create enemy
   for i=1,3 do
@@ -319,7 +363,6 @@ function create_enemies()
 
     -- pathfinding stuff
     enemy.closed_nodes = {}
-    enemy.came_from = {}
     enemy.start_node = {x=enemy.x, y=enemy.y}
     enemy.openset = {enemy.start_node}
     enemy.goal = {x=player.x, y=player.y}
@@ -339,7 +382,6 @@ function create_enemies()
 end
 
 function update_enemy(enemy)
-
   if enemy.dying then
     enemy.ttl-=1
     if enemy.ttl<=0 then
@@ -376,6 +418,10 @@ function update_enemy(enemy)
     if (not enemy.attached and enemy.pumps==0) then
       enemy.x+=enemy.speed.x
       enemy.y+=enemy.speed.y
+      if enemy.x<0 then enemy.x=0 end
+      if enemy.x>120 then enemy.x=120 end
+      if enemy.y<0 then enemy.y=0 end
+      if enemy.y>120 then enemy.y=120 end
       if check_enemy_collision_wall(enemy) or
         enemy.x > 120 or enemy.x < 0 then
         enemy.speed.x = -enemy.speed.x
@@ -408,15 +454,20 @@ function update_enemy(enemy)
     end
   end
 
-  if enemy.tt%15==0 then
-    enemy.movement_queue = {}
-    enemy.winning_path=astar(enemy)
-    if enemy.winning_path != nil then
-      for i=#enemy.winning_path,1,-1 do
-        add(enemy.movement_queue, enemy.winning_path[i])
+  if enemy.tt%35==0 then
+    local newpath = astar(enemy)
+    if newpath != nil then
+      enemy.movement_queue = {}
+      enemy.winning_path=newpath
+      --enemy.winning_path=astar(enemy)
+      if enemy.winning_path != nil then
+        for i=#enemy.winning_path,1,-1 do
+          add(enemy.movement_queue, enemy.winning_path[i])
+        end
+        del(enemy.movement_queue, enemy.movement_queue[1])
       end
-      del(enemy.movement_queue, enemy.movement_queue[1])
     end
+
   end
 end
 
@@ -482,7 +533,16 @@ function stop_firing()
   player.rope_speed=0
 end
 
-
+function check_collision(thing1, thing2)
+  if thing1.x < thing2.x+thing2.w and
+     thing1.x+thing1.w > thing2.x and
+     thing1.y+thing1.h > thing2.y and
+     thing1.y < thing2.y+thing2.h and
+     thing1.y+thing1.h > thing2.y then
+    return true
+  end
+  return false
+end
 
 
 ------------PATHFINDINGCODE---------
@@ -491,10 +551,9 @@ function astar(obj)
     obj.came_from = {}
     obj.start_node = {x=flr(obj.x/8), y=flr(obj.y/8)}
     obj.openset = {obj.start_node}
-    obj.goal = {x=flr(player.x/8), y=flr(player.y/8)}
+    obj.goal = {x=flr((player.x+4)/8), y=flr((player.y+4)/8)}
     obj.current_node = obj.start_node
     obj.g_score, obj.f_score = {}, {}
-    obj.came_from = {}
     obj.winning_path = {}
     obj.g_score[obj.start_node] = find_distance(obj.start_node, obj.goal)
     obj.f_score[obj.start_node] = obj.g_score[obj.start_node]
@@ -504,6 +563,7 @@ function astar(obj)
       current_node = lowest_f_score(obj.openset, obj.f_score)
       if current_node.x == obj.goal.x and current_node.y == obj.goal.y then
         obj.winning_path = unwind_path(obj.winning_path, obj.came_from, current_node)
+        add(obj.winning_path, current_node)
         return obj.winning_path
       end
 
@@ -610,14 +670,14 @@ __gfx__
 000000009999999994444444222222221111111100000000000000000dddddd00000ddddddddd0000006666d6666dd000000006d066116dd0000000000000000
 0000000099a9999a444444442222242211111111000000000000000000dddd00000d666e666dd0000006116e6116dd000000016e0000dd000000000000000000
 000000009999999944494444242222221111111100000000000000000ee0ee00000e611e116ee0000006116e6116ee00000600000010ee000000000000000000
-0000000000000000000000000000000000000000000000000000000000000000000e611e116ee0000006666e6661ed00000000006661ed000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000ddddddddd000000dddddddd1dd00006666e00dd00d000000000000000000
-000000000000000000000000000000000000000000000000000000000000000000000ddddddd00000000ddddddddd00000d11dd000006ee00000000000000000
-000000000800000000000000000000000000000000000000000000000000000000000ee0eed0000000000ee0eedd0000066111e0e0661ed00000000000000000
-0000000088000000000000000000000000000000000000000000000000000000000000000000000000000000000000000dddddd00ddd1dd00000000000000000
-00000000080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ddddd00ddddd000000000000000000
-000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ee0000eedd0000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000090000000000000000000000000000000000000000000000e611e116ee0000006666e6661ed00000000006661ed000000000000000000
+00000000000000000a09400000000000000000000000000000000000000000000000ddddddddd000000dddddddd1dd00006666e00dd00d000000000000000000
+0000000000000000aa994400000000000000000000000000000000000000000000000ddddddd00000000ddddddddd00000d11dd000006ee00000000000000000
+000000000800000094444a40000000000000000000000000000000000000000000000ee0eed0000000000ee0eedd0000066111e0e0661ed00000000000000000
+00000000880000009444a4920000000000000000000000000000000000000000000000000000000000000000000000000dddddd00ddd1dd00000000000000000
+00000000080000004444942200000000000000000000000000000000000000000000000000000000000000000000000000ddddd00ddddd000000000000000000
+000000000000000044442220000000000000000000000000000000000000000000000000000000000000000000000000000ee0000eedd0000000000000000000
+00000000000000000222222000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
