@@ -168,6 +168,10 @@ function _update()
     update_enemy(enemy)
   end
 
+  for rock in all(rocks) do
+    update_rock(rock)
+  end
+
   if #enemies==0 then
     _init()
   end
@@ -188,7 +192,15 @@ function _draw()
   end
 
   for rock in all(rocks) do
+    local prevx=rock.x
+    local prevy=rock.y
+    if rock.ttf < 60 and rock.ttf != 0 and rock.dy==0 then
+      rock.x+=rnd(2)
+      rock.y+=rnd(2)
+    end
     pretty_draw_sprite(rock)
+    rock.x=prevx
+    rock.y=prevy
   end
 end
 
@@ -317,6 +329,7 @@ function create_rocks()
     rock = {}
     rock.x = flr(rnd(128)/8)*8
     rock.y = flr(rnd(128)/8)*8
+    rock.dy = 0
     while not fget(mget(flr((rock.x/8)), flr((rock.y+8)/8)), 0) do
       rock.x = flr(rnd(128)/8)*8
       rock.y = flr(rnd(128)/8)*8
@@ -327,6 +340,7 @@ function create_rocks()
     rock.sprites={50}
     rock.frame=1
     rock.t=0
+    rock.ttf=60 -- frames it takes until rock starts falling
     rock.default_speed=2
     add(rocks, rock)
   end
@@ -379,6 +393,22 @@ function create_enemies()
     mset((enemy.x-8)/8, enemy.y/8, 0)
     mset((enemy.x+8)/8, enemy.y/8, 0)
   end
+end
+
+function update_rock(rock)
+  rock.dy=0
+  if rock.ttf > 0 and not fget(mget(flr((rock.x/8)), flr((rock.y+8)/8)), 0) then
+    rock.ttf-=1
+  end
+  if rock.ttf==0 then
+    if not fget(mget(flr((rock.x/8)), flr((rock.y+8)/8)), 0) then
+      rock.dy=rock.default_speed
+    else
+      rock.ttf=60
+    end
+  end
+  rock.y+=rock.dy
+  if rock.y>120 then rock.y=120 end
 end
 
 function update_enemy(enemy)
