@@ -188,7 +188,10 @@ function _draw()
   pretty_draw_sprite(player)
   for enemy in all(enemies) do
     pretty_draw_sprite(enemy)
-    rect(enemy.goal.x*8, enemy.goal.y*8, enemy.goal.x*8+8, enemy.goal.y*8+8, 7)
+    --rect(enemy.goal.x*8, enemy.goal.y*8, enemy.goal.x*8+8, enemy.goal.y*8+8, 7)
+    for sp in all(enemy.movement_queue) do
+      rect(sp.x*8, sp.y*8, sp.x*8+8, sp.y*8+8,7)
+    end
   end
 
   for rock in all(rocks) do
@@ -348,7 +351,7 @@ end
 
 function create_enemies()
   --create enemy
-  for i=1,3 do
+  for i=1,2 do
     enemy = {}
     -- obj must have 
     -- step
@@ -446,8 +449,6 @@ function update_enemy(enemy)
 
     --enemy movement code
     if (not enemy.attached and enemy.pumps==0) then
-      enemy.x+=enemy.speed.x
-      enemy.y+=enemy.speed.y
       if enemy.x<0 then enemy.x=0 end
       if enemy.x>120 then enemy.x=120 end
       if enemy.y<0 then enemy.y=0 end
@@ -475,16 +476,20 @@ function update_enemy(enemy)
         else
           enemy.speed.y=0
         end
+        --if enemy.speed.y != 0 and enemy.speed.x != 0 then enemy.speed.y=0 end
         if enemy.speed.x == 0 and enemy.speed.y == 0  or 
            (enemy.x/8 ==0 and enemy.y/8 == 0) then
           del(enemy.movement_queue, enemy.movement_queue[1])
+          --del(enemy.movement_queue, enemy.movement_queue[1])
+          --add(enemy.movement_queue, {x=flr((player.x/8)),y=flr((player.y/8))})
         end
       end
-
+      enemy.x+=enemy.speed.x
+      enemy.y+=enemy.speed.y
     end
   end
 
-  if enemy.tt%35==0 then
+  if enemy.tt%15==0 then
     local newpath = astar(enemy)
     if newpath != nil then
       enemy.movement_queue = {}
@@ -495,6 +500,9 @@ function update_enemy(enemy)
           add(enemy.movement_queue, enemy.winning_path[i])
         end
         del(enemy.movement_queue, enemy.movement_queue[1])
+        del(enemy.movement_queue, enemy.movement_queue[1])
+        --add(enemy.movement_queue, {x=flr((player.x/8)),y=flr((player.y/8))})
+
       end
     end
 
@@ -505,32 +513,6 @@ function find_distance(pointa, pointb)
   local horz = pointb.x - pointa.x
   local vert = pointb.y - pointa.y
   return sqrt((horz*horz) + (vert*vert))
-end
-
-function find_new_enemy_speed(enemy)
-  local newspeed = enemy.speed
-  local current_distance = find_distance(enemy, player)
-  if (enemy.x%8)==0 and (enemy.y%8)==0 then
-    -- check all neighbors
-    if not check_enemy_collision_wall({x=enemy.x+4,y=enemy.y-4,speed=enemy.speed}) then
-      -- above enemy is free, check if distance is better
-      local new_distance = find_distance({x=enemy.x,y=enemy.y-8}, player)
-      if new_distance < current_distance then newspeed={x=0,y=-0.5} end
-    elseif not check_enemy_collision_wall({x=enemy.x+4,y=enemy.y+10,speed=enemy.speed}) then
-      -- below enemy is free, check if distance is better
-      local new_distance = find_distance({x=enemy.x,y=enemy.y+8}, player)
-      if new_distance < current_distance then newspeed={x=0,y=0.5} end
-    elseif not check_enemy_collision_wall({x=enemy.x+8+4,y=enemy.y,speed=enemy.speed}) then
-      -- right of enemy is free, check if distance is better
-      local new_distance = find_distance({x=enemy.x+8,y=enemy.y}, player)
-      if new_distance < current_distance then newspeed={x=0.5,y=0} end
-    elseif not check_enemy_collision_wall({x=enemy.x-8+4,y=enemy.y,speed=enemy.speed}) then
-      -- left of enemy is free, check if distance is better
-      local new_distance = find_distance({x=enemy.x-8,y=enemy.y}, player)
-      if new_distance < current_distance then newspeed={x=-0.5,y=0} end
-    end
-  end
-  return newspeed
 end
 
 function find_attached_enemy()
@@ -634,15 +616,27 @@ end
 
 function get_valid_neighbors(node)
   local nodes = {}
-  for x=-1,1 do
-    for y=-1,1 do
-      local new_node = {x=node.x+x, y=node.y+y}
-      if not (x==0 and y==0) and not (y==-1 and x==-1) and not(x==1 and y==1)
-         and not_in(closed_nodes, new_node) and is_valid_node(new_node) and
-         (new_node.x*8 > 0 and new_node.x*8 < 128 and 
-          new_node.y*8 > 0 and new_node.y*8 < 128) then
-        add(nodes, new_node)
-      end
+  local potential_nodes = {}
+  --for x=-1,1 do
+  --  for y=-1,1 do
+  --    local new_node = {x=node.x+x, y=node.y+y}
+  --    if not (x==0 and y==0) and not (y==-1 and x==-1) and not (x==1 and y==1) and not (x==-1 and y==1)
+  --       and not_in(closed_nodes, new_node) and is_valid_node(new_node) and
+  --       (new_node.x*8 > 0 and new_node.x*8 < 120 and 
+  --        new_node.y*8 > 0 and new_node.y*8 < 120) then
+  --      add(nodes, new_node)
+  --    end
+  --  end
+  --end
+  add(potential_nodes, {x=node.x-1, y=node.y})
+  add(potential_nodes, {x=node.x+1, y=node.y})
+  add(potential_nodes, {x=node.x, y=node.y-1})
+  add(potential_nodes, {x=node.x, y=node.y+1})
+  for n in all(potential_nodes) do
+    if not_in(closed_nodes, n) and is_valid_node(n) and
+       n.x*8>0 and n.x*8<128 and
+       n.y*8>0 and n.y*8<128 then
+       add(nodes, n)
     end
   end
   return nodes
