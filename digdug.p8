@@ -23,9 +23,24 @@ player.rope={} -- series of pxls to hold the rope sinwav?
 player.rope_speed=3
 player.firing=false
 player.firing_t=0
+player.lives = 3
+player.ttl=30
+player.fx={}
 enemies = {}
 rocks = {}
+allfx = {}
 t=0
+score = 0
+level = 0
+cam = {x=0, y=0, dx=0, dy=0}
+
+function reset_game()
+  _init()
+  score=0
+  t=0
+  level=0
+  mode = 0
+end
 
 function advance_obj_frame(obj)
   -- obj must have 
@@ -46,7 +61,6 @@ end
 
 function _init()
   reset_map()
-  player = {}
   player.x=128/8
   player.y=128/8
   player.dx = 0
@@ -68,7 +82,11 @@ function _init()
   player.rope={} -- series of pxls to hold the rope sinwav?
   player.rope_speed=3
   player.firing=false
+  player.dying=false
   player.firing_t=0
+  player.ttl=30
+  player.fx={}
+  allfx = {}
   enemies = {}
   rocks = {}
   create_enemies()
@@ -76,161 +94,297 @@ function _init()
 end
 
 function _update()
+  if cam.dx > 0 then
+    cam.dx-=1
+  end
+  if cam.dy > 0 then
+    cam.dy-=1
+  end
+  camera(cam.x+cam.dx, cam.y+cam.dy)
   t+=1
-  if btn(0) or btn(1) or
-     btn(2) or btn(3) then
-     advance_obj_frame(player)
-  else
-    --player.moving=false
-  end
-  if not player.firing then
-    if btn(0) then
-      -- use regular sprite set
-      player.dx=-player.speed
-      player.flipy=false
-      player.flipx=false
-      player.flipsprite=false
-      find_new_player_y()
-      player.digx=(player.x+2)/8
-      player.digy=(player.y)/8
-    elseif btn(1) then
-      player.dx=player.speed
-      player.flipx=true
-      player.flipy=false
-      player.flipsprite=false
-      find_new_player_y()
-      player.digx=(player.x+6)/8
-      player.digy=(player.y)/8
-    elseif btn(2) then
-      -- use different sprite set
-      player.dy=-player.speed
-      player.flipx=false
-      player.flipy=true
-      player.flipsprite=true
-      find_new_player_x()
-      player.digx=(player.x)/8
-      player.digy=(player.y+2)/8
-    elseif btn(3) then
-      player.dy=player.speed
-      player.flipx=false
-      player.flipy=false
-      player.flipsprite=true
-      find_new_player_x()
-      player.digx=(player.x)/8
-      player.digy=(player.y+6)/8
-    else
-      player.dy=0
-      player.dx=0
-    end
-  end
-  player.x+=player.dx
-  player.y+=player.dy
-  if player.x<0 then player.x=0 player.dx=0 end
-  if player.x>120 then player.x=120 player.dx=0 end
-  if player.y<0 then player.y=0 player.dy=0 end
-  if player.y>120 then player.y=120 player.dy=0 end
-
-  if btnp(5) then
-    stop_firing()
-    detach_all_enemies()
-    player.dx=0
-    player.dy=0
-  end
-  if player.flipsprite then
-    player.sprite=player.flipsprites[player.frame+1]
-    if player.firing then player.sprite=17 end
-  else
-    player.sprite=player.sprites[player.frame+1]
-    if player.firing then player.sprite=1 end
-  end
-  mset(player.digx, player.digy, 0)
-
-  if player.firing then
-    player.dx=0
-    player.dy=0
-    firing_step()
-    if check_hook_collision_wall() then
-      stop_firing()
-    elseif check_hook_collision_enemy() then
-      player.rope_speed=0
-    end
-    enemy_idx = find_attached_enemy()
-    if btnp(4) and enemy_idx then
-      enemies[enemy_idx].pumps+=1
-    end
-  else
+  if mode == 0 then
+    -- title screen
     if btnp(4) then
-      fire()
+      mode +=1
     end
-  end
+    for enemy in all(enemies) do
+      update_enemy(enemy)
+    end
 
-  for enemy in all(enemies) do
-    update_enemy(enemy)
-  end
+    for rock in all(rocks) do
+      update_rock(rock)
+    end
+  elseif mode == 2 then
+    -- endgame screen
+    if btnp(4) then
+      reset_game()
+    end
+  elseif mode == 1 then
+    -- main game
+    if player.lives <= 0 then
+      mode += 1
+    end
+    if btn(0) or btn(1) or
+      btn(2) or btn(3) then
+      advance_obj_frame(player)
+    else
+      --player.moving=false
+    end
+    if not player.firing and not player.dying then
+      if btn(0) then
+        -- use regular sprite set
+        player.dx=-player.speed
+        player.flipy=false
+        player.flipx=false
+        player.flipsprite=false
+        find_new_player_y()
+        player.digx=(player.x+2)/8
+        player.digy=(player.y)/8
+      elseif btn(1) then
+        player.dx=player.speed
+        player.flipx=true
+        player.flipy=false
+        player.flipsprite=false
+        find_new_player_y()
+        player.digx=(player.x+6)/8
+        player.digy=(player.y)/8
+      elseif btn(2) then
+        -- use different sprite set
+        player.dy=-player.speed
+        player.flipx=false
+        player.flipy=true
+        player.flipsprite=true
+        find_new_player_x()
+        player.digx=(player.x)/8
+        player.digy=(player.y+2)/8
+      elseif btn(3) then
+        player.dy=player.speed
+        player.flipx=false
+        player.flipy=false
+        player.flipsprite=true
+        find_new_player_x()
+        player.digx=(player.x)/8
+        player.digy=(player.y+6)/8
+      else
+        player.dy=0
+        player.dx=0
+      end
+    end
+    local canmove = true
+    for rock in all(rocks) do
+      if check_collision({w=(player.w*8)-3,h=(player.h*8)-3,
+                          x=player.x+player.dx,
+                          y=player.y+player.dy},
+                          {w=(rock.w*8)-2,h=(rock.h*8)-2,
+                          x=rock.x,y=rock.y}) then
+        canmove = false
+      end
+    end
+    if canmove then
+      player.x+=player.dx
+      player.y+=player.dy
+    end
+    if player.x<0 then player.x=0 player.dx=0 end
+    if player.x>120 then player.x=120 player.dx=0 end
+    if player.y<0 then player.y=0 player.dy=0 end
+    if player.y>120 then player.y=120 player.dy=0 end
 
-  for rock in all(rocks) do
-    update_rock(rock)
-  end
+    if btnp(5) then
+      stop_firing()
+      detach_all_enemies()
+      player.dx=0
+      player.dy=0
+    end
+    if player.flipsprite then
+      player.sprite=player.flipsprites[player.frame+1]
+      if player.firing then player.sprite=17 end
+    else
+      player.sprite=player.sprites[player.frame+1]
+      if player.firing then player.sprite=1 end
+    end
+    mset(player.digx, player.digy, 0)
 
-  if #enemies==0 then
-    _init()
-  end
+    if player.firing then
+      player.dx=0
+      player.dy=0
+      firing_step()
+      if check_hook_collision_wall() then
+        stop_firing()
+      elseif check_hook_collision_enemy() then
+        player.rope_speed=0
+      end
+      enemy_idx = find_attached_enemy()
+      if btnp(4) and enemy_idx then
+        enemies[enemy_idx].pumps+=1
+      end
+    else
+      if btnp(4) then
+        fire()
+      end
+    end
+    if player.dying then
+      player.ttl-=1
+      player.sprite=37
+      if player.ttl<=0 then
+        player.ttl=30
+        player.lives-=1
+        player.dying=false
+        _init()
+      end
+    end
+    for enemy in all(enemies) do
+      if (enemy.pumps==0 and not enemy.dying) and
+         check_collision({w=player.w*8,h=player.h*8,x=player.x,y=player.y}, 
+                         {w=enemy.w*8,h=enemy.h*8,x=enemy.x,y=enemy.y}) then
+        player.dying=true
+        player.dx=0 player.dy=0
+        create_fx(player.x, player.y)
+        del(enemies, enemy)
+
+      end
+      update_enemy(enemy)
+    end
+
+    for rock in all(rocks) do
+      update_rock(rock)
+    end
+
+    update_fx()
+
+    if #enemies==0 then
+      _init()
+    end
+  end -- end MODE 1 playmode
 end
 
 function _draw()
   cls()
   map(0,0,0,0,16,16)
-  if player.firing then
-    for rope_piece in all(player.rope) do
-      pset(rope_piece.x, rope_piece.y, 7)
-    end
-  end
-  pretty_draw_sprite(player)
-  for enemy in all(enemies) do
-    pretty_draw_sprite(enemy)
-    --rect(enemy.goal.x*8, enemy.goal.y*8, enemy.goal.x*8+8, enemy.goal.y*8+8, 7)
-    for sp in all(enemy.movement_queue) do
-      rect(sp.x*8, sp.y*8, sp.x*8+8, sp.y*8+8,7)
-    end
-  end
 
-  for rock in all(rocks) do
-    local prevx=rock.x
-    local prevy=rock.y
-    if rock.ttf < 60 and rock.ttf != 0 and rock.dy==0 then
-      rock.x+=rnd(2)
-      rock.y+=rnd(2)
+  if mode == 0 then
+    -- title screen
+    for enemy in all(enemies) do
+      pretty_draw_sprite(enemy)
+      --rect(enemy.goal.x*8, enemy.goal.y*8, enemy.goal.x*8+8, enemy.goal.y*8+8, 7)
+      --for sp in all(enemy.movement_queue) do
+      --  rect(sp.x*8, sp.y*8, sp.x*8+8, sp.y*8+8,7)
+      --end
     end
-    pretty_draw_sprite(rock)
-    rock.x=prevx
-    rock.y=prevy
+
+    for rock in all(rocks) do
+      local prevx=rock.x
+      local prevy=rock.y
+      if rock.ttf < 30 and rock.ttf != 0 and rock.dy==0 then
+        rock.x+=rnd(2)
+        rock.y+=rnd(2)
+      end
+      pretty_draw_sprite(rock)
+      rock.x=prevx
+      rock.y=prevy
+    end
+
+    pretty_print("dig dork", 46, 128/2)
+    pretty_print("press z", 47, 168/2)
+  elseif mode == 2 then
+    -- endgame screen
+    pretty_print("game over", 46, 128/2)
+    pretty_print("press z", 47, 168/2)
+    draw_hud()
+  elseif mode == 1 then
+    draw_hud()
+    
+    -- main game
+    if player.firing then
+      for rope_piece in all(player.rope) do
+        pset(rope_piece.x, rope_piece.y, 7)
+      end
+    end
+    pretty_draw_sprite(player)
+    for enemy in all(enemies) do
+      pretty_draw_sprite(enemy)
+      --rect(enemy.goal.x*8, enemy.goal.y*8, enemy.goal.x*8+8, enemy.goal.y*8+8, 7)
+      --for sp in all(enemy.movement_queue) do
+      --  rect(sp.x*8, sp.y*8, sp.x*8+8, sp.y*8+8,7)
+      --end
+    end
+
+    for rock in all(rocks) do
+      local prevx=rock.x
+      local prevy=rock.y
+      if rock.ttf < 30 and rock.ttf != 0 and rock.dy==0 then
+        rock.x+=rnd(2)
+        rock.y+=rnd(2)
+      end
+      pretty_draw_sprite(rock)
+      rock.x=prevx
+      rock.y=prevy
+    end
+    draw_fx()
+
+    --rect(player.x, player.y, player.x+player.w*8, player.y+player.h*8, 7)
   end
 end
 
+function draw_hud()
+  -- draw lives
+  for i=1,player.lives do
+    for p=1,15 do pal(p,0) end
+    for j=-1,1 do
+      for k=-1,1 do
+        spr(1,93+(i*8)+j, 3+k)
+      end
+    end
+    pal()
+    spr(1,93+(i*8), 3)
+  end
+  -- draw score
+  local digits=score
+  local modx=0
+  while flr(digits/10) > 0 do
+    modx+=4
+    digits=flr(digits/10)
+  end
+  for i=-1,1 do
+    for k=-1,1 do
+      print("score:"..score,98+i-modx,13+k,0)
+    end
+  end
+  print("score:"..score,98-modx,13,7)
+end
+
 function pretty_draw_sprite(obj)
-  pal(1,0) pal(2,0) pal(3,0) pal(4,0)
-  pal(5,0) pal(6,0) pal(7,0) pal(8,0)
-  pal(9,0) pal(10,0) pal(11,0) pal(12,0)
-  pal(13,0) pal(14,0) pal(15,0)
+  for c=1,15 do
+    pal(c,0)
+  end
+
   local drawx=obj.x-(4*(obj.w-1))
   local drawy=obj.y-(4*(obj.h-1))
-  spr(obj.sprite, drawx,   drawy,   obj.w, obj.h, obj.flipx, obj.flipy)
-  spr(obj.sprite, drawx+1, drawy,   obj.w, obj.h, obj.flipx, obj.flipy)
-  spr(obj.sprite, drawx-1, drawy,   obj.w, obj.h, obj.flipx, obj.flipy)
-  spr(obj.sprite, drawx,   drawy+1, obj.w, obj.h, obj.flipx, obj.flipy)
-  spr(obj.sprite, drawx+1, drawy+1, obj.w, obj.h, obj.flipx, obj.flipy)
-  spr(obj.sprite, drawx-1, drawy+1, obj.w, obj.h, obj.flipx, obj.flipy)
-  spr(obj.sprite, drawx,   drawy-1, obj.w, obj.h, obj.flipx, obj.flipy)
-  spr(obj.sprite, drawx+1, drawy-1, obj.w, obj.h, obj.flipx, obj.flipy)
-  spr(obj.sprite, drawx-1, drawy-1, obj.w, obj.h, obj.flipx, obj.flipy)
+
+  for i=-1,1 do
+    for j=-1,1 do
+      spr(obj.sprite, drawx+i, drawy+j, 
+          obj.w, obj.h, obj.flipx, obj.flipy)
+    end
+  end
+
   pal()
-  spr(obj.sprite,
-      drawx,
-      drawy,
-      obj.w,
-      obj.h,
-      obj.flipx,
+  spr(obj.sprite, drawx, drawy,
+      obj.w, obj.h, obj.flipx,
       obj.flipy)
+end
+
+print_time=0
+function pretty_print(str, x, y)
+  print_time+=0.1
+  if print_time==60 then print_time=0 end
+  local ymod = (print_time%60)/10
+  printh(sin(ymod))
+  for i=-1,1 do
+    for j=-1,1 do
+      print(str, x+i, y+j+sin(ymod)*4, 1)
+    end
+  end
+  print(str, x, y+sin(ymod)*4, 7)
 end
 
 function find_new_player_x()
@@ -331,11 +485,11 @@ function create_rocks()
   for i=1,3 do
     rock = {}
     rock.x = flr(rnd(128)/8)*8
-    rock.y = flr(rnd(128)/8)*8
+    rock.y = 24+flr(rnd(104)/8)*8
     rock.dy = 0
     while not fget(mget(flr((rock.x/8)), flr((rock.y+8)/8)), 0) do
       rock.x = flr(rnd(128)/8)*8
-      rock.y = flr(rnd(128)/8)*8
+      rock.y = 24+flr(rnd(104)/8)*8
     end
     rock.w=1
     rock.h=1
@@ -343,7 +497,7 @@ function create_rocks()
     rock.sprites={50}
     rock.frame=1
     rock.t=0
-    rock.ttf=60 -- frames it takes until rock starts falling
+    rock.ttf=30 -- frames it takes until rock starts falling
     rock.default_speed=2
     add(rocks, rock)
   end
@@ -353,11 +507,6 @@ function create_enemies()
   --create enemy
   for i=1,2 do
     enemy = {}
-    -- obj must have 
-    -- step
-    -- t
-    -- sprites
-    -- frame
     enemy.step=10
     enemy.t=0
     enemy.tt=flr(rnd(30))
@@ -365,8 +514,8 @@ function create_enemies()
     enemy.frame=1
     enemy.flipx=false
     enemy.flipy=false
-    enemy.x=flr(rnd(128)/8)*8
-    enemy.y=flr(rnd(128)/8)*8
+    enemy.x=16+flr(rnd(100)/8)*8
+    enemy.y=16+flr(rnd(100)/8)*8
     enemy.w=1
     enemy.h=1
     enemy.sprite=1
@@ -406,8 +555,19 @@ function update_rock(rock)
   if rock.ttf==0 then
     if not fget(mget(flr((rock.x/8)), flr((rock.y+8)/8)), 0) then
       rock.dy=rock.default_speed
+      for enemy in all(enemies) do
+        if not enemy.dying and
+         check_collision({w=rock.w*8,h=rock.h*8,x=rock.x,y=rock.y},
+                         {w=enemy.w*8,h=enemy.h*8,x=enemy.x,y=enemy.y}) then
+          enemy.pumps=3
+          enemy.sprite = 40+(enemy.pumps*2) - 2
+          enemy.dying=true
+          create_fx(enemy.x, enemy.y)
+          score+=1000
+        end
+      end
     else
-      rock.ttf=60
+      rock.ttf=30
     end
   end
   rock.y+=rock.dy
@@ -434,6 +594,8 @@ function update_enemy(enemy)
       if enemy.pumps==3 then
         --del(enemies, enemy)
         enemy.dying=true
+        create_fx(enemy.x, enemy.y)
+        score+=200
         stop_firing()
       end
       if enemy.pump_timer > 0 then
@@ -556,6 +718,65 @@ function check_collision(thing1, thing2)
   return false
 end
 
+function draw_fx()
+  for fx in all(allfx) do
+    for cir in all(fx.circs) do
+      circfill(cir.x, cir.y, cir.r+1, 0)
+      circfill(cir.x, cir.y, cir.r, 7)
+    end
+  end
+end
+
+function create_fx(x, y)
+  cam.dx+=rnd(3)
+  cam.dy+=rnd(3)
+  local fx = {}
+  fx.x = x
+  fx.y = y
+  fx.dx=0
+  fx.dy=0
+  fx.circs = {}
+  fx.ttl = 15
+  for i=1,10 do
+    local newcirc = {}
+    newcirc.r=3
+    newcirc.x=fx.x
+    newcirc.dx=rnd(4)
+    newcirc.dy=rnd(4)
+    if flr(rnd(2)) == 0 then
+      newcirc.dx*=-1
+    end
+    newcirc.y=fx.y
+    if flr(rnd(2)) == 0 then
+      newcirc.dy*=-1
+    end
+    newcirc.c = flr(rnd(5))+1
+    add(fx.circs, newcirc)
+  end
+  add(allfx, fx)
+end
+
+function update_fx()
+  for fx in all(allfx) do
+    printh('found fx! '..t)
+    fx.x+=fx.dx
+    fx.y+=fx.dy
+    for cir in all(fx.circs) do
+      cir.x+=cir.dx
+      cir.y+=cir.dy
+      if fx.ttl%2==0 then
+        cir.r-=(rnd(2))
+      end
+      if cir.r<=0 then
+        del(fx.circs, cir)
+      end
+    end
+    fx.ttl-=1
+    if fx.ttl<=0 then
+      del(allfx, fx)
+    end
+  end
+end
 
 ------------PATHFINDINGCODE---------
 function astar(obj)
@@ -657,7 +878,11 @@ function not_in(nodes, node_to_find)
 end
 
 function is_valid_node(node)
-  return not fget(mget(flr(node.x), flr(node.y)), 0)
+  local is_valid = not fget(mget(flr(node.x), flr(node.y)), 0)
+  for rock in all(rocks) do
+    is_valid = is_valid and not (flr(node.x*8) == rock.x and flr(node.y*8) == rock.y)
+  end
+  return is_valid
 end
 
 function unwind_path ( flat_path, nodemap, current_node )
@@ -686,14 +911,14 @@ __gfx__
 00000000071c0c070071c080071c08700071c087071c080700000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000000000000c000000088800008880000008880000888000000000000000000000000000000000000000000000000000000000000000000000000000000000
 000000000000c0000000008000000800000000800000080000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000099999999444449442222222211111111000000000000000000dddd00000000000000000000000000000000000000d000000000000000000000000000
-000000009a99999944444444222422241111111100000000000000000dddddd00000000000000000000000000000000000ddd00000dd00000000000000000000
-0000000099999a994944449422222222111111110000000000000000e66e66ed0000000000000000000000dddd0000000dddd00000dddd000000000000000000
-00000000999999994444444424222222111111110000000000000000e16e16ee000000dddd0000000000dddddddd000006666d0000ddddd00000000000000000
-00000000999999994444444422222222111111110000000000000000eeeeeeed00000ddddddd0000000dddddddddd00006116d000d6666dd0000000000000000
-000000009999999994444444222222221111111100000000000000000dddddd00000ddddddddd0000006666d6666dd000000006d066116dd0000000000000000
-0000000099a9999a444444442222242211111111000000000000000000dddd00000d666e666dd0000006116e6116dd000000016e0000dd000000000000000000
-000000009999999944494444242222221111111100000000000000000ee0ee00000e611e116ee0000006116e6116ee00000600000010ee000000000000000000
+0000000099999999444449442222222211111111008000000000000000dddd00000000000000000000000000000000000000d000000000000000000000000000
+000000009a99999944444444222422241111111108880000000000000dddddd00000000000000000000000000000000000ddd00000dd00000000000000000000
+0000000099999a994944449422222222111111117080cc7000000000e66e66ed0000000000000000000000dddd0000000dddd00000dddd000000000000000000
+00000000999999994444444424222222111111117787cc7700000000e16e16ee000000dddd0000000000dddddddd000006666d0000ddddd00000000000000000
+00000000999999994444444422222222111111110087cc7700000000eeeeeeed00000ddddddd0000000dddddddddd00006116d000d6666dd0000000000000000
+000000009999999994444444222222221111111177c7cc77000000000dddddd00000ddddddddd0000006666d6666dd000000006d066116dd0000000000000000
+0000000099a9999a444444442222242211111111708c77700000000000dddd00000d666e666dd0000006116e6116dd000000016e0000dd000000000000000000
+000000009999999944494444242222221111111100800000000000000ee0ee00000e611e116ee0000006116e6116ee00000600000010ee000000000000000000
 0000000000000000000090000000000000000000000000000000000000000000000e611e116ee0000006666e6661ed00000000006661ed000000000000000000
 00000000000000000a09400000000000000000000000000000000000000000000000ddddddddd000000dddddddd1dd00006666e00dd00d000000000000000000
 0000000000000000aa994400000000000000000000000000000000000000000000000ddddddd00000000ddddddddd00000d11dd000006ee00000000000000000
