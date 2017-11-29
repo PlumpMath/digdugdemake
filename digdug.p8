@@ -40,6 +40,8 @@ function reset_game()
   t=0
   level=0
   mode = 0
+  player.lives=3
+  player.dying=false
 end
 
 function advance_obj_frame(obj)
@@ -105,7 +107,7 @@ function _update()
   if mode == 0 then
     -- title screen
     if btnp(4) then
-      mode +=1
+      mode=1
     end
     for enemy in all(enemies) do
       update_enemy(enemy)
@@ -170,6 +172,7 @@ function _update()
         player.dx=0
       end
     end
+
     local canmove = true
     for rock in all(rocks) do
       if check_collision({w=(player.w*8)-3,h=(player.h*8)-3,
@@ -232,6 +235,12 @@ function _update()
         _init()
       end
     end
+
+    if #enemies==0 and not player.dying then
+      level+=1
+      _init()
+    end
+
     for enemy in all(enemies) do
       if (enemy.pumps==0 and not enemy.dying) and
          check_collision({w=player.w*8,h=player.h*8,x=player.x,y=player.y}, 
@@ -251,9 +260,6 @@ function _update()
 
     update_fx()
 
-    if #enemies==0 then
-      _init()
-    end
   end -- end MODE 1 playmode
 end
 
@@ -505,7 +511,7 @@ end
 
 function create_enemies()
   --create enemy
-  for i=1,2 do
+  for i=1,2+(flr(level/2)) do
     enemy = {}
     enemy.step=10
     enemy.t=0
